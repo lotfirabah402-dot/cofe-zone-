@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>بطاقة الولاء</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;800&display=swap">
+<style>
+:root{--bg:#F2F5F4;--ink:#10282A;--mute:#5B7173;--card:#fff;--line:#D6E0DE;--brand:#0F3D3E;--on-brand:#fff;--gold:#F4B223;--on-gold:#2A1D00;--bad:#B3261E}
+@media (prefers-color-scheme:dark){:root{--bg:#0C1A1B;--ink:#E7F0EE;--mute:#92A9A7;--card:#142A2B;--line:#25403F;--brand:#1C5A5B;--bad:#F2B8B5}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:Tajawal,"Segoe UI",Tahoma,sans-serif;font-size:16px;line-height:1.6;padding-top:env(safe-area-inset-top,0)}
+header{background:var(--brand);color:var(--on-brand);padding:16px;border-radius:0 0 22px 22px}
+header h1{margin:0;font-size:22px;font-weight:800}
+header p{margin:0;opacity:.8;font-size:13px;direction:ltr;text-align:right}
+.top{display:flex;justify-content:space-between;align-items:center}
+.chip{border:1px solid rgba(255,255,255,.4);background:transparent;color:var(--on-brand);padding:4px 14px;border-radius:99px;font:inherit;font-size:14px;cursor:pointer}
+main{padding:16px 16px 100px;max-width:560px;margin:0 auto}
+h2{font-size:18px;font-weight:800;margin:0 0 8px}
+.box{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;margin-bottom:14px}
+.box.link{cursor:pointer}
+.punch{background:var(--card);border:2px dashed var(--brand);border-radius:20px;padding:18px;margin-bottom:14px}
+.grid{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin:12px 0 16px}
+.st{aspect-ratio:1;border-radius:50%;border:2px solid var(--line);display:flex;align-items:center;justify-content:center;color:var(--mute)}
+.st.f{background:var(--gold);border-color:var(--gold);color:var(--on-gold);font-size:20px}
+.row{display:flex;gap:8px;margin-top:8px}
+input,select{flex:1;min-width:0;font:inherit;padding:10px 12px;border-radius:12px;border:1px solid var(--line);background:var(--bg);color:var(--ink);width:100%}
+.go{font:inherit;font-weight:800;background:var(--brand);color:var(--on-brand);border:0;border-radius:12px;padding:10px 18px;cursor:pointer}
+.go.alt{background:transparent;color:var(--brand);border:1px solid var(--brand)}
+.del{background:none;border:0;color:var(--bad);font:inherit;cursor:pointer;padding:0 6px}
+.item{display:flex;align-items:baseline;gap:8px;padding:8px 0;border-bottom:1px solid var(--line)}
+.item:last-child{border-bottom:0}
+.dots{flex:1;border-bottom:2px dotted var(--line);transform:translateY(-4px)}
+.mute{color:var(--mute);font-size:14px}
+.tag{font-size:12px;background:var(--line);padding:1px 8px;border-radius:99px;color:var(--mute)}
+nav{position:fixed;inset:auto 0 0 0;background:var(--card);border-top:1px solid var(--line);display:flex;padding:6px 8px calc(6px + env(safe-area-inset-bottom,0px))}
+nav button{flex:1;background:none;border:0;font:inherit;color:var(--mute);padding:8px;border-radius:12px;cursor:pointer}
+nav button.on{background:var(--brand);color:var(--on-brand);font-weight:800}
+#qr{background:#fff;padding:12px;border-radius:12px;display:inline-block;line-height:0}
+#qr img{width:200px;height:200px;image-rendering:pixelated}
+#toast{position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 18px;border-radius:99px;font-size:14px;opacity:0;pointer-events:none;transition:opacity .2s;max-width:90%;text-align:center}
+#toast.show{opacity:1}
+</style>
+</head>
+<body>
+<div id="app"></div><div id="toast" role="status"></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+<script>
+const sb=supabase.createClient('https://qmrmewhhtehkmunxutig.supabase.co','sb_publishable_5Z32U6m4kzv5H_rr8cWMmA_ijMWNVdK');
+const S={me:null,admin:false,venues:[],cur:null,mgr:null,tab:'home',offers:[],menu:[],visits:0,code:''};
+const KIND={cafe:'مقهى',restaurant:'مطعم'};
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const val=id=>document.getElementById(id).value.trim();
+const V=id=>S.venues.find(v=>v.id===id);
+function toast(t){const e=document.getElementById('toast');e.textContent=t;e.className='show';clearTimeout(toast.t);toast.t=setTimeout(()=>e.className='',3000)}
+
+async function boot(){
+  const {data}=await sb.auth.getSession();S.me=data.session?data.session.user:null;S.admin=false;
+  if(S.me){const r=await sb.from('app_admins').select('user_id').eq('user_id',S.me.id);S.admin=!!(r.data&&r.data.length);
+    await loadVenues();const k=location.hash.slice(1);if(k&&V(k)){S.tab='home';await loadVenue(k)}}
+  R();
+}
+async function loadVenues(){const r=await sb.from('venues').select('*').order('created_at');S.venues=r.data||[]}
+async function loadVenue(id){
+  S.cur=id;
+  const [o,m,v]=await Promise.all([
+    sb.from('offers').select('*').eq('venue_id',id).order('created_at'),
+    sb.from('menu_items').select('*').eq('venue_id',id).order('category'),
+    sb.from('visits').select('id',{count:'exact',head:true}).eq('venue_id',id).eq('customer_id',S.me.id)]);
+  S.offers=o.data||[];S.menu=m.data||[];S.visits=v.count||0;
+}
+async function openV(id){await loadVenue(id);R()}
+function back(){S.cur=null;S.mgr=null;history.replaceState(null,'',location.pathname);R()}
+function goTab(t){S.tab=t;S.cur=null;S.mgr=null;R()}
+
+async function login(){const r=await sb.auth.signInWithPassword({email:val('em'),password:val('pw')});
+  if(r.error){toast('البريد أو كلمة المرور غير صحيحة');return}await boot()}
+async function signup(){const pw=val('pw');if(pw.length<6){toast('كلمة المرور 6 أحرف على الأقل');return}
+  const r=await sb.auth.signUp({email:val('em'),password:pw});
+  if(r.error){toast('تعذر إنشاء الحساب: '+r.error.message);return}
+  if(!r.data.session){toast('تحقق من بريدك لتأكيد الحساب ثم سجّل الدخول');return}await boot()}
+async function out(){await sb.auth.signOut();S.cur=null;S.mgr=null;await boot()}
+
+async function stamp(){
+  const r=await sb.rpc('record_visit',{p_venue:S.cur,p_code:val('code')});
+  if(r.error){const m=r.error.message||'';
+    toast(m.includes('bad code')?'الرمز غير صحيح. اطلب الرمز من العامل.':m.includes('too soon')?'سجّلت زيارة قبل قليل. حاول بعد 3 ساعات.':'تعذر تسجيل الزيارة');return}
+  S.visits=r.data;R();toast('تمت إضافة زيارة إلى بطاقتك')
+}
+
+/* الإدارة */
+async function addVenue(){
+  const name=val('vn'),goal=parseInt(val('vg'),10)||10,price=parseInt(val('vp'),10)||0,code=val('vc');
+  if(!name||code.length<3){toast('أدخل اسم المكان ورمز زيارة من 3 أرقام على الأقل');return}
+  const r=await sb.from('venues').insert({name,kind:val('vk'),stamps_goal:goal,monthly_price:price}).select().single();
+  if(r.error){toast('تعذرت الإضافة: '+r.error.message);return}
+  await sb.from('venue_secrets').insert({venue_id:r.data.id,visit_code:code});
+  await loadVenues();R();toast('تمت إضافة المكان')
+}
+async function mgr(id){await loadVenue(id);S.mgr=id;const r=await sb.from('venue_secrets').select('visit_code').eq('venue_id',id).maybeSingle();S.code=r.data?r.data.visit_code:'';S.cur=null;R()}
+async function reMgr(){await mgr(S.mgr)}
+async function addOffer(){const t=val('of');if(!t)return;const r=await sb.from('offers').insert({venue_id:S.mgr,text:t});if(r.error){toast('تعذرت الإضافة');return}await reMgr();toast('تمت إضافة العرض')}
+async function addItem(){const n=val('mn'),p=parseInt(val('mp'),10);if(!n||!(p>0)){toast('أدخل الاسم والسعر');return}
+  const r=await sb.from('menu_items').insert({venue_id:S.mgr,name:n,price:p,category:val('mc')||null});if(r.error){toast('تعذرت الإضافة');return}await reMgr();toast('تمت إضافة المنتج')}
+async function delRow(t,id){await sb.from(t).delete().eq('id',id);await reMgr()}
+async function setCode(){const c=val('nc');if(c.length<3){toast('3 أرقام على الأقل');return}
+  const r=await sb.from('venue_secrets').upsert({venue_id:S.mgr,visit_code:c});if(r.error){toast('تعذر التغيير');return}await reMgr();toast('تم تغيير الرمز')}
+async function togV(){const v=V(S.mgr);await sb.from('venues').update({active:!v.active}).eq('id',v.id);await loadVenues();R()}
+async function delV(){if(!confirm('حذف هذا المكان وكل بياناته؟'))return;await sb.from('venues').delete().eq('id',S.mgr);S.mgr=null;await loadVenues();R()}
+
+/* العرض */
+function authHTML(){return `<header><h1>بطاقة الولاء</h1><p>&nbsp;</p></header><main><div class="box"><h2>تسجيل الدخول</h2><input id="em" type="email" placeholder="البريد الإلكتروني" style="direction:ltr"><div class="row"><input id="pw" type="password" placeholder="كلمة المرور" style="direction:ltr"></div><div class="row"><button class="go" onclick="login()">دخول</button><button class="go alt" onclick="signup()">حساب جديد</button></div></div></main>`}
+function homeHTML(){
+  const list=S.venues.filter(v=>v.active);
+  return '<h2>الأماكن</h2>'+(list.length?list.map(v=>`<div class="box link" onclick="openV('${v.id}')"><b>${esc(v.name)}</b> <span class="tag">${KIND[v.kind]||''}</span><div class="mute">${esc(v.tagline||'')}</div></div>`).join(''):'<p class="mute">لا توجد أماكن بعد.</p>');
+}
+function venueHTML(){
+  const v=V(S.cur);if(!v)return homeHTML();
+  const g=v.stamps_goal,n=S.visits,r=n%g,full=n>0&&r===0,f=full?g:r;
+  let h=`<button class="del" onclick="back()">← رجوع</button><div class="punch"><h2>${esc(v.name)}</h2><div class="mute">${full?'بطاقتك مكتملة! اطلب مشروبك المجاني من العامل.':`باقي ${g-f} زيارات للمكافأة`}</div><div class="grid">`;
+  for(let i=0;i<g;i++)h+=`<span class="st ${i<f?'f':''}">${i<f?'☕':i+1}</span>`;
+  h+=`</div><div class="row"><input id="code" inputmode="numeric" placeholder="رمز الزيارة من العامل"><button class="go" onclick="stamp()">سجّل زيارة</button></div></div>`;
+  h+=`<h2>العروض</h2>`+(S.offers.length?S.offers.map(o=>`<div class="box">${esc(o.text)}</div>`).join(''):'<p class="mute">لا توجد عروض حاليًا.</p>');
+  h+=`<h2>المنيو</h2><div class="box">`+(S.menu.length?S.menu.map(m=>`<div class="item"><span>${esc(m.name)}${m.category?` <span class="tag">${esc(m.category)}</span>`:''}</span><span class="dots"></span><b>${esc(m.price)} دج</b></div>`).join(''):'<span class="mute">المنيو فارغ.</span>')+'</div>';
+  return h;
+}
+function adminHTML(){
+  if(S.mgr)return mgrHTML();
+  const tot=S.venues.reduce((a,v)=>a+(v.active?v.monthly_price:0),0);
+  return `<div class="box"><b>${S.venues.length}</b> مكان · دخل شهري <b>${tot}</b> دج</div>`+
+  S.venues.map(v=>`<div class="box link" onclick="mgr('${v.id}')"><b>${esc(v.name)}</b> <span class="tag">${KIND[v.kind]||''}</span> ${v.active?'':'<span class="tag">موقوف</span>'}<div class="mute">${v.monthly_price} دج شهريًا</div></div>`).join('')+
+  `<div class="box"><h2>إضافة مكان</h2><input id="vn" placeholder="اسم المكان"><div class="row"><select id="vk"><option value="cafe">مقهى</option><option value="restaurant">مطعم</option></select><input id="vg" inputmode="numeric" placeholder="زيارات المكافأة (10)"></div><div class="row"><input id="vp" inputmode="numeric" placeholder="الاشتراك الشهري دج"><input id="vc" inputmode="numeric" placeholder="رمز الزيارة"></div><button class="go" style="width:100%;margin-top:8px" onclick="addVenue()">أضف المكان</button></div>`;
+}
+function mgrHTML(){
+  const v=V(S.mgr);if(!v)return '';
+  return `<button class="del" onclick="back()">← رجوع</button><h2>${esc(v.name)}</h2>
+  <div class="box"><h2>رمز QR للطاولات</h2><div id="qr"></div><p class="mute">يفتح بطاقة هذا المكان مباشرة. اطبعه وضعه على الطاولات.</p></div>
+  <div class="box"><h2>رمز الزيارة</h2><p class="mute">الحالي: <b>${esc(S.code)}</b></p><div class="row"><input id="nc" inputmode="numeric" placeholder="رمز جديد"><button class="go" onclick="setCode()">غيّر</button></div></div>
+  <div class="box"><h2>العروض</h2>${S.offers.map(o=>`<div class="item"><span>${esc(o.text)}</span><span class="dots"></span><button class="del" onclick="delRow('offers','${o.id}')">حذف</button></div>`).join('')}<div class="row"><input id="of" placeholder="عرض جديد"><button class="go" onclick="addOffer()">أضف</button></div></div>
+  <div class="box"><h2>المنيو</h2>${S.menu.map(m=>`<div class="item"><span>${esc(m.name)}</span><span class="dots"></span><b>${esc(m.price)}</b><button class="del" onclick="delRow('menu_items','${m.id}')">حذف</button></div>`).join('')}<div class="row"><input id="mn" placeholder="المنتج"><input id="mp" inputmode="numeric" placeholder="السعر" style="max-width:90px"></div><div class="row"><input id="mc" placeholder="التصنيف (اختياري)"><button class="go" onclick="addItem()">أضف</button></div></div>
+  <div class="row"><button class="go alt" onclick="togV()">${v.active?'إيقاف الاشتراك':'تفعيل الاشتراك'}</button><button class="go alt" style="color:var(--bad);border-color:var(--bad)" onclick="delV()">حذف المكان</button></div>`;
+}
+function R(){
+  const a=document.getElementById('app');
+  if(!S.me){a.innerHTML=authHTML();return}
+  let h=`<header><div class="top"><h1>بطاقة الولاء</h1><button class="chip" onclick="out()">خروج</button></div><p>${esc(S.me.email)}</p></header><main>`;
+  h+=(S.tab==='admin'&&S.admin)?adminHTML():(S.cur?venueHTML():homeHTML());
+  h+='</main>';
+  if(S.admin)h+=`<nav><button class="${S.tab==='home'?'on':''}" onclick="goTab('home')">الزبون</button><button class="${S.tab==='admin'?'on':''}" onclick="goTab('admin')">الإدارة</button></nav>`;
+  a.innerHTML=h;
+  const q=document.getElementById('qr');
+  if(q&&S.mgr){try{const o=qrcode(0,'M');o.addData(location.origin+location.pathname+'#'+S.mgr);o.make();q.innerHTML=o.createImgTag(6,2,'QR')}catch(e){q.textContent='تعذر إنشاء الرمز'}}
+}
+boot();
+</script>
+</body>
+</html>
